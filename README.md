@@ -8,7 +8,7 @@ sql-parser requires Go version 1.2 or greater.
 
 Status & Roadmap
 ----------------
-**This is an unfinished project. Estimated release date of the first version is Feb 2014. **
+**This is an unfinished project. Estimated release date of the first version is Feb 2014.**
 
 
 Limitations
