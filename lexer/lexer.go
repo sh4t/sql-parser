@@ -1,9 +1,8 @@
-
 package Lexer
 
 import (
-	"io"
 	"fmt"
+	"io"
 )
 
 // ItemType identifies the type of lex Items.
@@ -16,17 +15,17 @@ type Item struct {
 }
 
 const (
-	ItemError        ItemType = iota // error occurred; value is text of error
+	ItemError ItemType = iota // error occurred; value is text of error
 	ItemEOF
-	ItemIdentifier // alphanumeric identifier not starting with '.'
-	ItemLeftParen  // '('
-	ItemNumber     // simple number, including imaginary
-	ItemRightParen // ')'
-	ItemSpace      // run of spaces separating arguments
-	ItemString     // quoted string (includes quotes)
-	ItemComment    // comments
+	ItemIdentifier     // alphanumeric identifier not starting with '.'
+	ItemLeftParen      // '('
+	ItemNumber         // simple number, including imaginary
+	ItemRightParen     // ')'
+	ItemSpace          // run of spaces separating arguments
+	ItemString         // quoted string (includes quotes)
+	ItemComment        // comments
 	ItemStatementStart // start of a statement like SELECT
-	ItemStetementEnd // ';'
+	ItemStetementEnd   // ';'
 	// etc.
 )
 
@@ -35,10 +34,10 @@ type StateFn func(*Lexer) StateFn
 
 // Lexer holds the state of the scanner.
 type Lexer struct {
-	name       string    // the name of the input; used only for error reports
+	name string // the name of the input; used only for error reports
 	//TODO: maybe use a chan of runes?
-	input      Reader    // the input source
-	state      StateFn   // the next lexing function to enter
+	input Reader  // the input source
+	state StateFn // the next lexing function to enter
 	//TODO: some way to remember current position, start of Item and last read witdh
 	Items      chan Item // channel of scanned Items
 	parenDepth int       // nesting depth of ( ) exprs
@@ -93,7 +92,6 @@ func lex(name, input, left, right string) *Lexer {
 func (l *Lexer) run() {
 	//TODO: implement
 }
-
 
 //TODO: different state functions that correspond to different ItemTypes like:
 // func lexComment(l *Lexer) StateFn {...}
