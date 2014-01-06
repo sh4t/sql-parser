@@ -5,14 +5,10 @@ A Go library for lexing and parsing SQL strings and streams.
 
 sql-parser requires Go version 1.2 or greater.
 
-Details
--------
-**TODO**
-
 
 Status & Roadmap
 ----------------
-This is an unfinished project. Estimated release date of the first version is Feb 2014. 
+**This is an unfinished project. Estimated release date of the first version is Feb 2014. **
 
 
 Limitations
@@ -44,6 +40,10 @@ TODO
 ```go
 TODO
 ```
+
+Credits
+-------
+The lexer implementation is inspired by [Rob Pike's lecture "Lexical Scanning in Go"](https://www.youtube.com/watch?v=HxaD_trXwRE) and the implementation of ["text/template" package](http://golang.org/pkg/text/template/) in the Go standard library.
 
 Used in
 -------
