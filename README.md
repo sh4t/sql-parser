@@ -43,7 +43,7 @@ TODO
 
 Credits
 -------
-The lexer implementation is inspired by [Rob Pike's lecture "Lexical Scanning in Go"](https://www.youtube.com/watch?v=HxaD_trXwRE) and the implementation of ["text/template" package](http://golang.org/pkg/text/template/) in the Go standard library.
+The lexer implementation is inspired by [Rob Pike's lecture "Lexical Scanning in Go"](https://www.youtube.com/watch?v=HxaD_trXwRE) and the implementation of the ["text/template" package](http://golang.org/pkg/text/template/) in the Go standard library.
 
 Used in
 -------

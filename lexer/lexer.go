@@ -27,6 +27,7 @@ const (
 	ItemStatementStart // start of a statement like SELECT
 	ItemStetementEnd   // ';'
 	// etc.
+	//TODO: enumerate all item types
 )
 
 // StateFn represents the state of the scanner as a function that returns the next state.
