@@ -1,4 +1,4 @@
-package Lexer
+package lexer
 
 import (
 	"fmt"
@@ -10,14 +10,16 @@ type ItemType int
 
 // Item represents a token or text string returned from the scanner.
 type Item struct {
-	typ ItemType // The type of this Item.
+	t   ItemType // The type of this Item.
 	val string   // The value of this Item.
 }
 
 const (
 	ItemError ItemType = iota // error occurred; value is text of error
 	ItemEOF
-	ItemIdentifier     // alphanumeric identifier not starting with '.'
+	ItemKeyword        // SQL language keyword like SELECT, INSERT, etc.
+	ItemOperator       // operators like '=', '<>', etc.
+	ItemIdentifier     // alphanumeric identifier
 	ItemLeftParen      // '('
 	ItemNumber         // simple number, including imaginary
 	ItemRightParen     // ')'
@@ -85,13 +87,16 @@ func (l *Lexer) nextItem() Item {
 }
 
 // lex creates a new scanner for the input string.
-func lex(name, input, left, right string) *Lexer {
+func lex(name, input string) *Lexer {
 	//TODO: implement
 }
 
 // run runs the state machine for the Lexer.
 func (l *Lexer) run() {
-	//TODO: implement
+	//TODO: implement; example:
+	for state := startState; state != nil; {
+		state = state(lexer)
+	}
 }
 
 //TODO: different state functions that correspond to different ItemTypes like:
