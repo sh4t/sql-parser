@@ -2,9 +2,10 @@ package lexer
 
 import (
 	"bufio"
-	"errors"
+	"fmt"
 	"io"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -15,17 +16,21 @@ type ItemType int
 
 // Item represents a token or text string returned from the scanner.
 type Item struct {
-	t   ItemType // The type of this Item.
-	pos int      // The starting position, in bytes, of this item in the input string.
-	val string   // The value of this Item.
+	Type ItemType // The type of this Item.
+	Pos  int      // The starting position, in bytes, of this item in the input string.
+	Val  string   // The value of this Item.
 }
 
 const (
 	ItemError ItemType = iota // error occurred; value is text of error
 	ItemEOF
+	ItemWhitespace
+	ItemSingleLineComment
+	ItemMultiLineComment
 	ItemKeyword        // SQL language keyword like SELECT, INSERT, etc.
 	ItemOperator       // operators like '=', '<>', etc.
-	ItemIdentifier     // alphanumeric identifier
+	ItemStar           // *: identifier that matches every column in a table
+	ItemIdentifier     // alphanumeric identifier or complex identifier like `a.b` and `c.*`
 	ItemLeftParen      // '('
 	ItemNumber         // simple number, including imaginary
 	ItemRightParen     // ')'
@@ -38,78 +43,134 @@ const (
 	//TODO: enumerate all item types
 )
 
-const eof = -1
+const EOF = -1
 
 // StateFn represents the state of the scanner as a function that returns the next state.
 type StateFn func(*Lexer) StateFn
 
+// ValidatorFn represents a function that is used to check whether a specific rune matches certain rules.
+type ValidatorFn func(rune) bool
+
 // Lexer holds the state of the scanner.
 type Lexer struct {
-	input       bufio.Reader // the input source
-	state       StateFn      // the next lexing function to enter
-	pos         int          // current position in the input
-	start       int          // start position of this item
-	currentItem []rune       // a slice of runes that contains the currently lexed item
-	Items       chan Item    // channel of scanned Items
+	state             StateFn       // the next lexing function to enter
+	input             io.RuneReader // the input source
+	inputCurrentStart int           // start position of this item
+	buffer            []rune        // a slice of runes that contains the currently lexed item
+	bufferPos         int           // the current position in the buffer
+	Items             chan Item     // channel of scanned Items
 }
 
-// next returns the next rune in the input.
-func (l *Lexer) next() (r rune, err error) {
-	var rsize int
-	r, rsize, err = l.input.ReadRune()
-	l.pos += rsize
-	l.currentItem = append(l.currentItem, r)
-	return r, err
-}
-
-// peek returns but does not consume the next rune in the input.
-func (l *Lexer) peek() (r rune, err error) {
-	r, _, err = l.input.ReadRune()
-	if err != nil {
-		l.input.UnreadRune()
+// next() returns the next rune in the input.
+func (l *Lexer) next() rune {
+	if l.bufferPos < len(l.buffer) {
+		res := l.buffer[l.bufferPos]
+		l.bufferPos++
+		return res
 	}
-	return r, err
+
+	r, _, _ := l.input.ReadRune()
+	//TODO: handle EOF, panic on other errors
+	l.buffer = append(l.buffer, r)
+	l.bufferPos++
+	return r
 }
 
-// backup steps back one rune. Can only be called once per call of next.
+// peek() returns but does not consume the next rune in the input.
+func (l *Lexer) peek() rune {
+	if l.bufferPos < len(l.buffer) {
+		return l.buffer[l.bufferPos]
+	}
+
+	r, _, _ := l.input.ReadRune()
+	//TODO: handle EOF, panic on other errors
+
+	l.buffer = append(l.buffer, r)
+	return r
+}
+
+// peek() returns but does not consume the next few runes in the input.
+func (l *Lexer) peekNext(length int) string {
+	lenDiff := l.bufferPos + length - len(l.buffer)
+	if lenDiff > 0 {
+		for i := 0; i < lenDiff; i++ {
+			r, _, _ := l.input.ReadRune()
+			//TODO: handle EOF, panic on other errors
+			l.buffer = append(l.buffer, r)
+		}
+	}
+
+	return string(l.buffer[l.bufferPos : l.bufferPos+length])
+}
+
+// backup steps back one rune
 func (l *Lexer) backup() {
-	cl := len(l.currentItem)
-	if cl < 1 {
-		panic(errors.New("lexer: trying to backup in an empty item"))
+	l.backupWith(1)
+}
+
+// backup steps back many runes
+func (l *Lexer) backupWith(length int) {
+	if l.bufferPos < length {
+		panic(fmt.Errorf("lexer: trying to backup with %d when the buffer position is %d", length, l.bufferPos))
 	}
 
-	l.pos -= utf8.RuneLen(l.currentItem[cl-1])
-	l.input.UnreadRune()
+	l.bufferPos -= length
 }
 
 // emit passes an Item back to the client.
 func (l *Lexer) emit(t ItemType) {
-	l.Items <- Item{t, l.start, string(l.currentItem)}
-	l.start = l.pos
+	l.Items <- Item{t, l.inputCurrentStart, string(l.buffer[:l.bufferPos])}
+	l.ignore()
 }
 
 // ignore skips over the pending input before this point.
 func (l *Lexer) ignore() {
-	l.start = l.pos
-	l.currentItem = l.currentItem[0:0]
+	itemByteLen := 0
+	for i := 0; i < l.bufferPos; i++ {
+		itemByteLen += utf8.RuneLen(l.buffer[i])
+	}
+
+	l.inputCurrentStart += itemByteLen
+	l.buffer = l.buffer[l.bufferPos:] //TODO: check for memory leaks, maybe copy remaining items into a new slice?
+	l.bufferPos = 0
 }
 
 // accept consumes the next rune if it's from the valid set.
 func (l *Lexer) accept(valid string) bool {
-	if r, err := l.next(); err == nil && strings.IndexRune(valid, r) >= 0 {
+	r := l.next()
+	if strings.IndexRune(valid, r) >= 0 {
 		return true
 	}
 	l.backup()
 	return false
 }
 
-// acceptRun consumes a run of runes from the valid set.
-func (l *Lexer) acceptRun(valid string) {
-	r, err := l.next()
-	for err == nil && strings.IndexRune(valid, r) >= 0 {
-		r, err = l.next()
+// acceptWhile consumes runes while the specified condition is true
+func (l *Lexer) acceptWhile(fn ValidatorFn) {
+	r := l.next()
+	for fn(r) {
+		r = l.next()
 	}
 	l.backup()
+}
+
+// acceptUntil consumes runes until the specified contidtion is met
+func (l *Lexer) acceptUntil(fn ValidatorFn) {
+	r := l.next()
+	for !fn(r) {
+		r = l.next()
+	}
+	l.backup()
+}
+
+// acceptUntil consumes runes until the specified string is met
+func (l *Lexer) acceptUntilMatch(match string) {
+	length := len(match)
+	next := l.peekNext(length)
+	for next != match {
+		l.next()
+		next = l.peekNext(length)
+	}
 }
 
 // nextItem returns the next Item from the input.
@@ -118,11 +179,11 @@ func (l *Lexer) nextItem() Item {
 }
 
 // lex creates a new scanner for the input string.
-func lex(input io.Reader) *Lexer {
+func Lex(input io.Reader) *Lexer {
 	l := &Lexer{
-		input:       bufio.NewReader(input),
-		currentItem: make([]rune, 0, 10),
-		items:       make(chan Item),
+		input:  bufio.NewReader(input),
+		buffer: make([]rune, 0, 10),
+		Items:  make(chan Item),
 	}
 	go l.run()
 	return l
@@ -130,13 +191,108 @@ func lex(input io.Reader) *Lexer {
 
 // run runs the state machine for the Lexer.
 func (l *Lexer) run() {
-	for state := startState; state != nil; {
-		state = state(lexer)
+	for state := lexWhitespace; state != nil; {
+		state = state(l)
+	}
+	close(l.Items)
+}
+
+// isSpace reports whether r is a whitespace character (space or end of line).
+func isWhitespace(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\r' || r == '\n'
+}
+
+// isSpace reports whether r is a space character.
+func isSpace(r rune) bool {
+	return r == ' ' || r == '\t'
+}
+
+// isEndOfLine reports whether r is an end-of-line character.
+func isEndOfLine(r rune) bool {
+	return r == '\r' || r == '\n'
+}
+
+// isAlphaNumeric reports whether r is an alphabetic, digit, or underscore.
+func isAlphaNumeric(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func lexWhitespace(l *Lexer) StateFn {
+	l.acceptWhile(isWhitespace)
+	if l.bufferPos > 0 {
+		l.emit(ItemWhitespace)
+	}
+
+	next := l.peek()
+	nextTwo := l.peekNext(2)
+
+	switch {
+	case next == EOF:
+		l.emit(ItemEOF)
+		return nil
+
+	case nextTwo == "--":
+		return lexSingleLineComment
+
+	case nextTwo == "/*":
+		return lexMultiLineComment
+
+	case next == '*':
+		//TODO: determine if this is neccessary or should be classified as an identifier
+		l.next()
+		l.emit(ItemStar)
+		return lexWhitespace
+
+	case next == '(':
+		l.next()
+		l.emit(ItemLeftParen)
+		return lexWhitespace
+
+	case next == ')':
+		l.next()
+		l.emit(ItemRightParen)
+		return lexWhitespace
+
+	/*
+		//TODO: finish different cases
+		case next == '*':
+			return lexStar
+		case next == '`':
+			return lexIdentifier
+		case next == '"' || next == '\'':
+			return lexString
+		case next == '+' || next == '-' || ('0' <= next && next <= '9'):
+			return lexNumber
+	*/
+
+	case isAlphaNumeric(next):
+		return lexKeyWordOrIdentifier
+
+	default:
+		//TODO: enable panic :)
+		//panic(fmt.Sprintf("don't know what to do with: %q", next))
+		l.emit(ItemEOF)
+		return nil
 	}
 }
 
-//TODO: different state functions that correspond to different ItemTypes like:
-// func lexComment(l *Lexer) StateFn {...}
-// func lexSpace(l *Lexer) StateFn {...}
-// func lexIdentifier(l *Lexer) StateFn {...}
-// etc.
+func lexSingleLineComment(l *Lexer) StateFn {
+	l.acceptUntil(isEndOfLine)
+	l.emit(ItemSingleLineComment)
+	return lexWhitespace
+}
+
+func lexMultiLineComment(l *Lexer) StateFn {
+	l.acceptUntilMatch("*/")
+	l.next()
+	l.next()
+	l.emit(ItemMultiLineComment)
+	return lexWhitespace
+}
+
+func lexKeyWordOrIdentifier(l *Lexer) StateFn {
+	l.acceptWhile(isAlphaNumeric)
+	l.emit(ItemIdentifier)
+	//TODO: determine whether this is a keyword
+	return lexWhitespace
+}
