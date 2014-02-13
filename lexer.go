@@ -235,11 +235,6 @@ func isOperator(r rune) bool {
 	return r == '+' || r == '-' || r == '*' || r == '/' || r == '=' || r == '>' || r == '<' || r == '~' || r == '|' || r == '^' || r == '&' || r == '%'
 }
 
-// isComplexIdentifier reports whether r is an alphabetic, digit, or underscore.
-func isComplexIdentifier(r rune) bool {
-	return isAlphaNumeric(r) || r == '.' || r == '`' || r == '*'
-}
-
 func lexWhitespace(l *Lexer) StateFn {
 	l.acceptWhile(isWhitespace)
 	if l.bufferPos > 0 {
@@ -338,7 +333,7 @@ func lexNumber(l *Lexer) StateFn {
 		count += 1 + l.acceptWhile(unicode.IsDigit)
 	}
 	if l.accept("eE") > 0 {
-		count += 1 + l.accept("+-") 
+		count += 1 + l.accept("+-")
 		count += l.acceptWhile(unicode.IsDigit)
 	}
 
@@ -392,7 +387,7 @@ func lexIdentifierOrKeyword(l *Lexer) StateFn {
 				if n == EOF {
 					return l.errorf("unterminated quoted string")
 				} else if n == '`' {
-					if (l.peek() == '`') {
+					if l.peek() == '`' {
 						l.next()
 					} else {
 						break
@@ -406,7 +401,7 @@ func lexIdentifierOrKeyword(l *Lexer) StateFn {
 			//TODO: check whether token is a keyword or an identifier
 			l.emit(ItemIdentifier)
 		}
-		
+
 		l.acceptWhile(isWhitespace)
 		if l.bufferPos > 0 {
 			l.emit(ItemWhitespace)
@@ -419,6 +414,6 @@ func lexIdentifierOrKeyword(l *Lexer) StateFn {
 		l.next()
 		l.emit(ItemDot)
 	}
-	
+
 	return lexWhitespace
 }
